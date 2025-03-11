@@ -2,6 +2,7 @@
 class amiszh_NewAmisMoedict {
     constructor(options) {
         this.options = options;
+        this.baseUrl = "https://new-amis.moedict.tw/terms/";
     }
 
     async displayName() {
@@ -17,36 +18,73 @@ class amiszh_NewAmisMoedict {
 
     async findTerm(word) {
         console.log("Finding term:", word);
+        this.word = word;
         return this.findAmisWord(word);
     }
 
     async findAmisWord(word) {
-        console.log("Starting findAmisWord for:", word);
         let notes = [];
+        console.log("Starting findAmisWord for:", word);
 
         if (!word) {
             console.log("No word provided");
             return notes;
         }
 
-        // 直接返回靜態結果，跳過 fetch 和解析
-        const definitions = [
-            `<div class="dict-name">測試字典</div>`,
-            `<span class="term-info">這是測試資料</span>`,
-            `<ol class="definitions"><li>測試定義：${word}</li></ol>`
-        ];
+        try {
+            const queryUrl = `${this.baseUrl}${encodeURIComponent(word)}`;
+            console.log("Requesting URL:", queryUrl);
+            const html = await api.requestXHR(queryUrl); // 使用 api.requestXHR
+            if (!html) {
+                console.log("No HTML received");
+                return notes;
+            }
+            console.log("Received HTML length:", html.length);
 
-        const css = this.renderCSS();
-        notes.push({
-            css,
-            expression: word,
-            reading: "",
-            extrainfo: "",
-            definitions,
-            audios: []
-        });
-        console.log("Returning notes:", notes);
-        return notes;
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, "text/html");
+
+            const dictionaryElements = doc.querySelectorAll(".dictionaries");
+            if (dictionaryElements.length === 0) {
+                console.log("No dictionary elements found");
+                return notes;
+            }
+
+            let definitions = [];
+            dictionaryElements.forEach((dict) => {
+                const dictName = dict.querySelector("div[class*='bg-']")?.innerText.trim() || "未知字典";
+                definitions.push(`<div class="dict-name">${dictName}</div>`);
+
+                const termInfo = dict.querySelector(".term-into .text-gray-500")?.innerText.trim();
+                if (termInfo) definitions.push(`<span class="term-info">${termInfo}</span>`);
+
+                const frequency = dict.querySelector(".ilrdf-term-info .text-gray-500")?.innerText.trim();
+                if (frequency) definitions.push(`<span class="frequency">${frequency}</span>`);
+
+                const listItems = doc.querySelectorAll("ol.list-decimal li");
+                let defContent = '<ol class="definitions">';
+                listItems.forEach((item, i) => {
+                    defContent += `<li>${item.innerHTML}</li>`;
+                });
+                defContent += '</ol>';
+                definitions.push(defContent);
+            });
+
+            const css = this.renderCSS();
+            notes.push({
+                css,
+                expression: word,
+                reading: "",
+                extrainfo: "",
+                definitions,
+                audios: []
+            });
+            console.log("Returning notes:", notes);
+            return notes;
+        } catch (error) {
+            console.error("Error in findAmisWord:", error);
+            return notes;
+        }
     }
 
     renderCSS() {
@@ -54,8 +92,13 @@ class amiszh_NewAmisMoedict {
             <style>
                 .dict-name {font-weight: bold; color: #ffffff; background-color: #0d47a1; padding: 4px 8px; margin-bottom: 5px; border-radius: 3px;}
                 .term-info {font-size: 0.9em; color: #6b7280; display: block; margin-bottom: 5px;}
+                .frequency {font-size: 0.85em; color: #6b7280; display: block; margin-bottom: 5px;}
                 ol.definitions {list-style-type: decimal; margin-left: 20px; padding-left: 0;}
-                li {margin-bottom: 10px;}
+                ol.definitions li {margin-bottom: 10px;}
+                ul {list-style-type: disc; margin-left: 20px; padding-left: 0;}
+                a {color: #1e40af; text-decoration: underline;}
+                a:hover {color: #0070a3; background-color: #e5e7eb;}
+                span.bg-stone-500 {background-color: #78716c; color: white; padding: 2px 4px; border-radius: 3px; margin-right: 5px;}
             </style>`;
     }
 }
